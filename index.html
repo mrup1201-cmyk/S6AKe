@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>S6AKE CLEAN 1.1</title>
+
+<style>
+body{
+margin:0;
+background:#050510;
+color:#fff;
+font-family:Arial;
+overflow:hidden;
+touch-action:none;
+}
+
+canvas{
+display:none;
+background:#0a0a0a;
+}
+
+.screen{
+position:fixed;
+inset:0;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+gap:10px;
+}
+
+.hidden{display:none!important}
+
+button{
+padding:10px 14px;
+border:none;
+border-radius:10px;
+font-size:14px;
+background:#222;
+color:#fff;
+}
+
+#hud{
+position:fixed;
+top:10px;
+left:10px;
+display:none;
+font-size:14px;
+}
+
+/* controls */
+#controls{
+position:fixed;
+bottom:20px;
+left:50%;
+transform:translateX(-50%);
+display:none;
+}
+
+.row{display:flex;gap:8px}
+
+.ctrl{
+width:55px;height:55px;
+background:rgba(0,255,255,0.3);
+border-radius:10px;
+font-size:18px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu" class="screen">
+<h1>S6AKE CLEAN</h1>
+
+<button onclick="startGame()">Играть</button>
+<button onclick="openSettings()">Настройки</button>
+<button onclick="openShop()">Кейсы</button>
+<button onclick="openInv()">Инвентарь</button>
+
+<div>Score: <span id="scoreUI">0</span></div>
+<div>Record: <span id="recordUI">0</span></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="screen hidden">
+<h2>Настройки</h2>
+
+<div>
+<label>Скорость:</label>
+<select id="speedSelect">
+<option value="120">Медленно</option>
+<option value="90" selected>Норм</option>
+<option value="60">Быстро</option>
+</select>
+</div>
+
+<div>
+<label>Управление:</label>
+<select id="controlSelect">
+<option value="buttons">Кнопки</option>
+<option value="swipe">Свайпы</option>
+</select>
+</div>
+
+<button onclick="applySettings()">Применить</button>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- SHOP -->
+<div id="shop" class="screen hidden">
+<h2>Кейсы</h2>
+<button onclick="openCase()">Открыть кейс (5)</button>
+<div id="caseLog"></div>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- INVENTORY -->
+<div id="inv" class="screen hidden">
+<h2>Инвентарь</h2>
+<div id="invList"></div>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+Score: <span id="score"></span> |
+Record: <span id="record"></span> |
+Money: <span id="money"></span>
+</div>
+
+<!-- CONTROLS -->
+<div id="controls">
+<div class="row">
+<button class="ctrl" data="up">↑</button>
+</div>
+<div class="row">
+<button class="ctrl" data="left">←</button>
+<button class="ctrl" data="down">↓</button>
+<button class="ctrl" data="right">→</button>
+</div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+// ===== DOM =====
+const menu=document.getElementById("menu");
+const settings=document.getElementById("settings");
+const shop=document.getElementById("shop");
+const inv=document.getElementById("inv");
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+// ===== GAME STATE =====
+let grid=20;
+let snake,food;
+let dx=grid,dy=0;
+
+let running=false;
+let last=0;
+let speed=90;
+
+let score=0;
+let record=Number(localStorage.getItem("record")||0);
+let money=0;
+
+// ===== SKINS SYSTEM =====
+const skins=[
+{id:"s1",name:"херня",color:"#666",fx:"none"},
+{id:"s2",name:"ну такое",color:"#0ff",fx:"glow"},
+{id:"s3",name:"нормалды",color:"#00f",fx:"pulse"},
+{id:"s4",name:"опана",color:"#a0f",fx:"neon"},
+{id:"s5",name:"ахуеть",color:"#f80",fx:"fire"},
+{id:"s6",name:"ебать копать",color:"#ff0",fx:"gold"}
+];
+
+let owned=skins.map(s=>s.id);
+let equipped="s2";
+
+// ===== MENU =====
+function show(screen){
+menu.classList.add("hidden");
+settings.classList.add("hidden");
+shop.classList.add("hidden");
+inv.classList.add("hidden");
+screen.classList.remove("hidden");
+}
+
+function backMenu(){
+show(menu);
+canvas.style.display="none";
+hudHide();
+}
+
+function hudHide(){
+document.getElementById("hud").style.display="none";
+document.getElementById("controls").style.display="none";
+}
+
+// ===== SETTINGS =====
+function applySettings(){
+speed=Number(document.getElementById("speedSelect").value);
+controlMode=document.getElementById("controlSelect").value;
+}
+
+// ===== GAME START =====
+function startGame(){
+show(menu);
+menu.classList.add("hidden");
+
+canvas.style.display="block";
+document.getElementById("hud").style.display="block";
+document.getElementById("controls").style.display="block";
+
+reset();
+running=true;
+requestAnimationFrame(loop);
+}
+
+// ===== RESET =====
+function reset(){
+snake=[{x:200,y:200}];
+food=spawn();
+dx=grid;
+dy=0;
+score=0;
+}
+
+// ===== SPAWN SAFE =====
+function spawn(){
+return{
+x:Math.floor(Math.random()*(canvas.width-grid)/grid)*grid,
+y:Math.floor(Math.random()*(canvas.height-grid)/grid)*grid
+};
+}
+
+// ===== FX =====
+function skinFX(color,fx){
+if(fx==="glow"){
+ctx.shadowColor=color;
+ctx.shadowBlur=15;
+}else if(fx==="pulse"){
+ctx.shadowBlur=Math.sin(Date.now()/100)*10;
+ctx.shadowColor=color;
+}else if(fx==="gold"){
+ctx.shadowColor="gold";
+ctx.shadowBlur=20;
+}else{
+ctx.shadowBlur=0;
+}
+}
+
+// ===== DRAW =====
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+let skin=skins.find(s=>s.id===equipped);
+
+// food
+ctx.fillStyle="#ff00ff";
+ctx.fillRect(food.x,food.y,grid,grid);
+
+// snake fx
+skinFX(skin.color,skin.fx);
+
+ctx.fillStyle=skin.color;
+snake.forEach(p=>ctx.fillRect(p.x,p.y,grid-2,grid-2));
+
+ctx.shadowBlur=0;
+}
+
+// ===== LOOP =====
+function loop(t){
+if(!running)return;
+if(t-last<speed){requestAnimationFrame(loop);return}
+last=t;
+
+// move
+let head={x:snake[0].x+dx,y:snake[0].y+dy};
+
+// WALL FIX (teleport prevention)
+if(head.x<0||head.y<0||head.x>=canvas.width||head.y>=canvas.height){
+return gameOver();
+}
+
+// self collision
+for(let i=0;i<snake.length;i++){
+if(snake[i].x===head.x&&snake[i].y===head.y){
+return gameOver();
+}
+}
+
+snake.unshift(head);
+
+// eat
+if(head.x===food.x&&head.y===food.y){
+score++;
+money+=1;
+food=spawn();
+}else{
+snake.pop();
+}
+
+// record FIX
+if(score>record){
+record=score;
+localStorage.setItem("record",record);
+}
+
+updateUI();
+draw();
+
+requestAnimationFrame(loop);
+}
+
+// ===== GAME OVER =====
+function gameOver(){
+running=false;
+backMenu();
+}
+
+// ===== UI =====
+function updateUI(){
+document.getElementById("scoreUI").innerText=score;
+document.getElementById("score").innerText=score;
+document.getElementById("recordUI").innerText=record;
+document.getElementById("record").innerText=record;
+document.getElementById("money").innerText=money;
+}
+
+// ===== SHOP =====
+function openShop(){show(shop);}
+function openInv(){show(inv);renderInv();}
+
+// ===== CASE =====
+function openCase(){
+let log=document.getElementById("caseLog");
+
+if(money<5){
+log.innerText="нет денег";
+return;
+}
+
+money-=5;
+
+let r=Math.random();
+
+if(r<0.7){
+let s=skins[Math.floor(Math.random()*skins.length)];
+owned.push(s.id);
+log.innerText="выпало: "+s.name;
+}else{
+money+=Math.floor(Math.random()*10)+1;
+log.innerText="бонус";
+}
+
+updateUI();
+renderInv();
+}
+
+// ===== INVENTORY FIX =====
+function renderInv(){
+let el=document.getElementById("invList");
+el.innerHTML="";
+
+skins.forEach(s=>{
+let b=document.createElement("button");
+b.innerText = (equipped===s.id ? "✔ " : "") + s.name;
+b.style.background=s.color;
+
+b.onclick=()=>{
+equipped=s.id;
+renderInv();
+};
+
+el.appendChild(b);
+});
+}
+
+// ===== CONTROLS FIX =====
+document.querySelectorAll(".ctrl").forEach(b=>{
+b.onclick=()=>{
+let d=b.dataset.data || b.getAttribute("data");
+
+if(d==="up"&&dy===0){dx=0;dy=-grid}
+if(d==="down"&&dy===0){dx=0;dy=grid}
+if(d==="left"&&dx===0){dx=-grid;dy=0}
+if(d==="right"&&dx===0){dx=grid;dy=0}
+};
+});
+
+updateUI();
+renderInv();
+
+</script>
+
+</body>
+</html>
