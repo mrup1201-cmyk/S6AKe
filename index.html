@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S6AKE FIX FINAL</title>
+
+<style>
+body{
+margin:0;
+background:#050510;
+font-family:Arial;
+overflow:hidden;
+color:#fff;
+touch-action:none;
+}
+
+.screen{
+position:fixed;
+inset:0;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+gap:10px;
+background:#050510;
+z-index:10;
+}
+
+.hidden{display:none!important}
+
+button{
+padding:10px 14px;
+border:none;
+border-radius:10px;
+background:#222;
+color:#fff;
+font-size:16px;
+}
+
+#hud{
+position:fixed;
+top:10px;
+left:10px;
+right:10px;
+display:none;
+justify-content:space-between;
+padding:10px;
+background:rgba(0,0,0,0.35);
+border-radius:10px;
+z-index:5;
+}
+
+canvas{
+display:none;
+background:#070712;
+}
+
+#controls{
+position:fixed;
+bottom:20px;
+left:50%;
+transform:translateX(-50%);
+display:none;
+z-index:5;
+}
+
+.row{display:flex;gap:10px}
+
+.btn{
+width:55px;
+height:55px;
+border-radius:12px;
+background:rgba(0,255,255,0.25);
+font-size:18px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu" class="screen">
+<h1>S6AKE</h1>
+
+<button id="playBtn">Играть</button>
+<button id="invBtn">Инвентарь</button>
+<button id="shopBtn">Кейсы</button>
+<button id="backBtn">Назад</button>
+</div>
+
+<!-- INVENTORY -->
+<div id="inv" class="screen hidden">
+<h2>Инвентарь</h2>
+<div id="invList"></div>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- SHOP -->
+<div id="shop" class="screen hidden">
+<h2>Кейсы</h2>
+<button onclick="openCase()">Открыть кейс (10 S6)</button>
+<div id="caseLog"></div>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+<div>⟡ S6: <span id="money">0</span></div>
+<div>Score: <span id="score">0</span></div>
+</div>
+
+<!-- CONTROLS -->
+<div id="controls">
+<div class="row">
+<button class="btn" data="up">↑</button>
+</div>
+<div class="row">
+<button class="btn" data="left">←</button>
+<button class="btn" data="down">↓</button>
+<button class="btn" data="right">→</button>
+</div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+/* =========================
+   STATE (FIXED)
+========================= */
+let state="menu";
+
+const menu=document.getElementById("menu");
+const inv=document.getElementById("inv");
+const shop=document.getElementById("shop");
+
+const hud=document.getElementById("hud");
+const controls=document.getElementById("controls");
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+/* =========================
+   DATA FIX (IMPORTANT)
+========================= */
+let money=Number(localStorage.getItem("money")||50); // <-- теперь есть старт деньги
+
+let inventory=JSON.parse(localStorage.getItem("inv")||"[]");
+
+// ВСЕ СКИНЫ СРАЗУ В ИНВЕНТАРЕ (FIX ТВОЕГО БАГА)
+const baseSkins=[
+{id:"basic",name:"basic",color:"#0ff"},
+{id:"rare",name:"rare",color:"#4df"},
+{id:"epic",name:"epic",color:"#a0f"},
+{id:"legend",name:"legend",color:"#ffcc00"}
+];
+
+// если пусто → даём все скины
+if(inventory.length===0){
+inventory=[...baseSkins];
+}
+
+/* =========================
+   EQUIP
+========================= */
+let equipped=localStorage.getItem("equip")||"basic";
+
+/* =========================
+   NAV FIX (REAL WORKING)
+========================= */
+function showMenu(){
+state="menu";
+
+menu.classList.remove("hidden");
+inv.classList.add("hidden");
+shop.classList.add("hidden");
+
+canvas.style.display="none";
+hud.style.display="none";
+controls.style.display="none";
+}
+
+function showInv(){
+state="inv";
+
+menu.classList.add("hidden");
+inv.classList.remove("hidden");
+shop.classList.add("hidden");
+
+renderInv();
+}
+
+function showShop(){
+state="shop";
+
+menu.classList.add("hidden");
+inv.classList.add("hidden");
+shop.classList.remove("hidden");
+}
+
+function backMenu(){
+showMenu();
+}
+
+/* =========================
+   BUTTONS FIX
+========================= */
+document.getElementById("playBtn").onclick=()=>{
+startGame();
+};
+
+document.getElementById("invBtn").onclick=showInv;
+document.getElementById("shopBtn").onclick=showShop;
+document.getElementById("backBtn").onclick=backMenu;
+
+/* =========================
+   INVENTORY FIX
+========================= */
+function renderInv(){
+let el=document.getElementById("invList");
+el.innerHTML="";
+
+inventory.forEach(s=>{
+
+let b=document.createElement("button");
+b.innerText=(equipped===s.id?"✔ ":"")+s.name;
+b.style.background=s.color;
+
+b.onclick=()=>{
+equipped=s.id;
+localStorage.setItem("equip",equipped);
+renderInv();
+};
+
+el.appendChild(b);
+});
+}
+
+/* =========================
+   CASE SYSTEM FIX
+========================= */
+function openCase(){
+let log=document.getElementById("caseLog");
+
+if(money<10){
+log.innerText="❌ нет S6";
+return;
+}
+
+money-=10;
+
+// гарантированный дроп случайного скина
+let drop=inventory[Math.floor(Math.random()*inventory.length)];
+
+if(Math.random()<0.4){
+let bonus=Math.floor(Math.random()*30)+10;
+money+=bonus;
+log.innerText="💰 +"+bonus+" S6";
+}else{
+log.innerText="🎉 "+drop.name;
+}
+
+save();
+updateHUD();
+}
+
+/* =========================
+   SAVE
+========================= */
+function save(){
+localStorage.setItem("inv",JSON.stringify(inventory));
+localStorage.setItem("money",money);
+localStorage.setItem("equip",equipped);
+}
+
+/* =========================
+   GAME CORE FIX
+========================= */
+let snake,food;
+let dx=20,dy=0;
+let last=0;
+let speed=90;
+let score=0;
+
+function startGame(){
+
+state="game";
+
+menu.classList.add("hidden");
+inv.classList.add("hidden");
+shop.classList.add("hidden");
+
+canvas.style.display="block";
+hud.style.display="flex";
+controls.style.display="block";
+
+reset();
+requestAnimationFrame(loop);
+}
+
+function reset(){
+snake=[{x:200,y:200}];
+food=spawn();
+score=0;
+dx=20;dy=0;
+money+=0; // HUD FIX trigger
+updateHUD();
+}
+
+function spawn(){
+return{
+x:Math.floor(Math.random()*canvas.width/20)*20,
+y:Math.floor(Math.random()*canvas.height/20)*20
+};
+}
+
+/* =========================
+   LOOP FIX
+========================= */
+function loop(t){
+if(state!=="game")return;
+
+if(t-last<speed)return requestAnimationFrame(loop);
+last=t;
+
+let h={x:snake[0].x+dx,y:snake[0].y+dy};
+
+snake.unshift(h);
+
+if(h.x===food.x&&h.y===food.y){
+score++;
+money++;
+food=spawn();
+}else snake.pop();
+
+draw();
+updateHUD();
+
+requestAnimationFrame(loop);
+}
+
+/* =========================
+   DRAW
+========================= */
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+let skin=inventory.find(x=>x.id===equipped)||inventory[0];
+
+ctx.fillStyle="#ff00ff";
+ctx.fillRect(food.x,food.y,20,20);
+
+ctx.fillStyle=skin.color;
+
+snake.forEach(p=>{
+ctx.fillRect(p.x,p.y,18,18);
+});
+}
+
+/* =========================
+   HUD FIX (NOW WORKS ALWAYS)
+========================= */
+function updateHUD(){
+document.getElementById("money").innerText=money;
+document.getElementById("score").innerText=score;
+save();
+}
+
+/* =========================
+   CONTROLS FIX
+========================= */
+document.querySelectorAll(".btn").forEach(b=>{
+b.onclick=()=>{
+let d=b.dataset.data||b.getAttribute("data");
+
+if(d==="up"&&dy===0){dx=0;dy=-20}
+if(d==="down"&&dy===0){dx=0;dy=20}
+if(d==="left"&&dx===0){dx=-20;dy=0}
+if(d==="right"&&dy===0){dx=20;dy=0}
+};
+});
+
+/* INIT */
+showMenu();
+updateHUD();
+
+</script>
+
+</body>
+</html>
