@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>S6AKE FINAL FIX</title>
+
+<style>
+body{
+margin:0;
+background:#050510;
+color:#fff;
+font-family:Arial;
+overflow:hidden;
+touch-action:none;
+}
+
+canvas{display:none;background:#0a0a0a}
+
+.screen{
+position:fixed;
+inset:0;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+gap:10px;
+}
+
+.hidden{display:none!important}
+
+button{
+padding:10px 14px;
+border:none;
+border-radius:10px;
+font-size:14px;
+}
+
+#hud{
+position:fixed;
+top:10px;
+left:10px;
+display:none;
+}
+
+/* ===== FIXED CONTROLS LAYOUT ===== */
+#controls{
+position:fixed;
+bottom:20px;
+left:50%;
+transform:translateX(-50%);
+display:none;
+}
+
+.ctrlWrap{
+display:flex;
+flex-direction:column;
+align-items:center;
+gap:6px;
+}
+
+.row{
+display:flex;
+gap:6px;
+}
+
+.ctrl{
+width:55px;
+height:55px;
+background:rgba(0,255,255,0.35);
+border-radius:10px;
+font-size:18px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu" class="screen">
+<h1>S6AKE</h1>
+<button onclick="startGame()">Играть</button>
+<button onclick="openSettings()">Настройки</button>
+<button onclick="openShop()">Кейсы</button>
+<button onclick="openInv()">Инвентарь</button>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="screen hidden">
+<h2>Настройки</h2>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- SHOP -->
+<div id="shop" class="screen hidden">
+<h2>Кейсы</h2>
+<button onclick="openCase()">Открыть кейс (5 S6Bit)</button>
+<button onclick="backMenu()">Назад</button>
+<div id="caseLog"></div>
+</div>
+
+<!-- INVENTORY -->
+<div id="inv" class="screen hidden">
+<h2>Инвентарь</h2>
+<div id="invList"></div>
+<button onclick="backMenu()">Назад</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">S6Bit: <span id="moneyUI">0</span></div>
+
+<!-- CONTROLS (FIXED LAYOUT) -->
+<div id="controls">
+<div class="ctrlWrap">
+
+<div class="row">
+<button class="ctrl" data="up">-</button>
+<button class="ctrl" data="up">1</button>
+<button class="ctrl" data="up">-</button>
+</div>
+
+<div class="row">
+<button class="ctrl" data="left">1</button>
+<button class="ctrl" data="down">1</button>
+<button class="ctrl" data="right">1</button>
+</div>
+
+</div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+// ===== DOM =====
+const menu=document.getElementById("menu");
+const settings=document.getElementById("settings");
+const shop=document.getElementById("shop");
+const inv=document.getElementById("inv");
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+// ===== GAME STATE =====
+let grid=20;
+let snake,food;
+let dx=grid,dy=0;
+let running=false;
+let last=0;
+let speed=90;
+
+let money=0;
+
+// ===== SKINS =====
+const skins=[
+{id:"s1",name:"херня",color:"#777"},
+{id:"s2",name:"ну такое",color:"#0ff"},
+{id:"s3",name:"нормалды",color:"#00f"},
+{id:"s4",name:"опана",color:"#a0f"},
+{id:"s5",name:"ахуеть",color:"#f80"},
+{id:"s6",name:"ебать копать",color:"#ff0"}
+];
+
+let owned=skins.map(s=>s.id);
+let equipped="s2";
+
+// ===== SHOW SYSTEM (FIXED MENU BUG) =====
+function show(screen){
+menu.classList.add("hidden");
+settings.classList.add("hidden");
+shop.classList.add("hidden");
+inv.classList.add("hidden");
+
+screen.classList.remove("hidden");
+}
+
+// ===== GAME START =====
+function startGame(){
+menu.classList.add("hidden");
+
+canvas.style.display="block";
+document.getElementById("hud").style.display="block";
+document.getElementById("controls").style.display="block";
+
+reset();
+running=true;
+requestAnimationFrame(loop);
+}
+
+// ===== RESET =====
+function reset(){
+snake=[{x:200,y:200}];
+food=spawn();
+dx=grid;
+dy=0;
+}
+
+// ===== SPAWN =====
+function spawn(){
+return{
+x:Math.floor(Math.random()*canvas.width/grid)*grid,
+y:Math.floor(Math.random()*canvas.height/grid)*grid
+};
+}
+
+// ===== DRAW =====
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ctx.fillStyle="#ff00ff";
+ctx.fillRect(food.x,food.y,grid,grid);
+
+ctx.fillStyle=skins.find(s=>s.id===equipped).color;
+snake.forEach(p=>ctx.fillRect(p.x,p.y,grid-2,grid-2));
+}
+
+// ===== LOOP =====
+function loop(t){
+if(!running)return;
+if(t-last<speed){requestAnimationFrame(loop);return}
+last=t;
+
+let head={x:snake[0].x+dx,y:snake[0].y+dy};
+
+for(let i=0;i<snake.length;i++){
+if(snake[i].x===head.x&&snake[i].y===head.y){
+return gameOver();
+}
+}
+
+snake.unshift(head);
+
+if(head.x===food.x&&head.y===food.y){
+money++;
+food=spawn();
+}else snake.pop();
+
+draw();
+updateUI();
+requestAnimationFrame(loop);
+}
+
+// ===== GAME OVER =====
+function gameOver(){
+running=false;
+menu.classList.remove("hidden");
+
+canvas.style.display="none";
+document.getElementById("hud").style.display="none";
+document.getElementById("controls").style.display="none";
+}
+
+// ===== UI =====
+function updateUI(){
+document.getElementById("moneyUI").innerText=money;
+}
+
+// ===== MENU ACTIONS =====
+function openSettings(){show(settings);}
+function openShop(){show(shop);}
+function openInv(){show(inv);renderInv();}
+function backMenu(){show(menu);canvas.style.display="none";document.getElementById("hud").style.display="none";document.getElementById("controls").style.display="none";}
+
+// ===== CASE =====
+function openCase(){
+let log=document.getElementById("caseLog");
+
+if(money<5){
+log.innerText="нет S6Bit";
+return;
+}
+
+money-=5;
+
+if(Math.random()<0.7){
+let s=skins[Math.floor(Math.random()*skins.length)];
+owned.push(s.id);
+log.innerText="выпало: "+s.name;
+}else{
+money+=Math.floor(Math.random()*10)+1;
+log.innerText="бонус S6Bit";
+}
+
+updateUI();
+renderInv();
+}
+
+// ===== INVENTORY =====
+function renderInv(){
+let el=document.getElementById("invList");
+el.innerHTML="";
+
+skins.forEach(s=>{
+let b=document.createElement("button");
+b.innerText=s.name;
+b.style.background=s.color;
+
+b.onclick=()=>{
+equipped=s.id;
+};
+
+el.appendChild(b);
+});
+}
+
+// ===== CONTROLS FIXED LAYOUT =====
+document.querySelectorAll(".ctrl").forEach(b=>{
+b.onclick=()=>{
+let d=b.dataset.data || b.getAttribute("data");
+
+if(d==="up"&&dy===0){dx=0;dy=-grid}
+if(d==="down"&&dy===0){dx=0;dy=grid}
+if(d==="left"&&dx===0){dx=-grid;dy=0}
+if(d==="right"&&dx===0){dx=grid;dy=0}
+};
+});
+
+// INIT
+updateUI();
+renderInv();
+
+</script>
+
+</body>
+</html>
